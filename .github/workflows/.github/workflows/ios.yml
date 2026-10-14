@@ -1,0 +1,21 @@
+name: iOS Auto-Port & Build
+on: [push, workflow_dispatch]
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install tools and patch CMake
+        run: |
+          brew install cmake ninja pkg-config
+          echo '{"name":"ror-ios","version-string":"0.1.0","dependencies":["sdl2","fmt","rapidjson","angelscript","openal-soft","zlib"]}' > vcpkg.json
+          sed -i '' 's/if(UNIX)/if(UNIX AND NOT APPLE)/g' CMakeLists.txt
+          sed -i '' 's/if(UNIX)/if(UNIX AND NOT APPLE)/g' source/main/CMakeLists.txt
+      - uses: lukka/run-vcpkg@v11
+      - name: Configure iOS ARM64
+        run: |
+          curl -L https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
+          mkdir build-ios && cd build-ios
+          cmake .. -G Xcode -DCMAKE_TOOLCHAIN_FILE=../ios.toolchain.cmake -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=../ios.toolchain.cmake -DVCPKG_TARGET_TRIPLET=arm64-ios -DPLATFORM=OS64 -DENABLE_BITCODE=OFF -DENABLE_ARC=ON -DROR_USE_PCH=OFF -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED="NO" -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
