@@ -1,0 +1,63 @@
+name: iOS Auto-Port & Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+
+    steps:
+    - name: 1. Скачивание исходников Rigs of Rods
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: 2. Установка инструментов сборки
+      run: |
+        brew install cmake ninja pkg-config
+
+    - name: 3. Авто-генерация конфигов и патч кода под iOS
+      run: |
+        # Создаем список зависимостей для iOS ARM64
+        cat << 'EOF' > vcpkg.json
+        {
+          "name": "rigs-of-rods-ios",
+          "version-string": "0.1.0",
+          "dependencies": [
+            "sdl2",
+            "fmt",
+            "rapidjson",
+            "angelscript",
+            "openal-soft",
+            "zlib"
+          ]
+        }
+        EOF
+
+        # Отключаем проверки Linux/X11 в файлах сборки CMake
+        sed -i '' 's/if(UNIX)/if(UNIX AND NOT APPLE)/g' CMakeLists.txt
+        sed -i '' 's/if(UNIX)/if(UNIX AND NOT APPLE)/g' source/main/CMakeLists.txt
+
+    - name: 4. Сборка базовых библиотек через vcpkg
+      uses: lukka/run-vcpkg@v11
+
+    - name: 5. Скачивание iOS CMake Toolchain
+      run: |
+        curl -L https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
+
+    - name: 6. Конфигурация проекта под iOS (ARM64)
+      run: |
+        mkdir build-ios && cd build-ios
+        cmake .. -G Xcode \
+          -DCMAKE_TOOLCHAIN_FILE=../ios.toolchain.cmake \
+          -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=../ios.toolchain.cmake \
+          -DVCPKG_TARGET_TRIPLET=arm64-ios \
+          -DPLATFORM=OS64 \
+          -DENABLE_BITCODE=OFF \
+          -DENABLE_ARC=ON \
+          -DROR_USE_PCH=OFF \
+          -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED="NO" \
+          -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+
